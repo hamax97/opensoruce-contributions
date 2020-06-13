@@ -1,0 +1,75 @@
+commit 456bbb436042b40790c5ac9d25c50518451a2738
+Author: Hamilton Tobon <hamiltontobon77@gmail.com>
+Date:   Fri Mar 13 23:35:06 2020 -0400
+
+    Test case for the type checking function
+
+diff --git a/llvm/test/Transforms/OpenMP/rtf_type_checking.ll b/llvm/test/Transforms/OpenMP/rtf_type_checking.ll
+new file mode 100644
+index 00000000000..502dcd4326c
+--- /dev/null
++++ b/llvm/test/Transforms/OpenMP/rtf_type_checking.ll
+@@ -0,0 +1,63 @@
++; RUN: opt -S -openmpopt -stats < %s 2>&1 | FileCheck %s
++
++target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
++
++%struct.ident_t = type { i32, i32, i32, i32, i8* }
++
++@.str = private unnamed_addr constant [23 x i8] c";unknown;unknown;0;0;;\00", align 1
++@0 = private unnamed_addr global %struct.ident_t { i32 0, i32 2, i32 0, i32 0, i8* getelementptr inbounds ([23 x i8], [23 x i8]* @.str, i32 0, i32 0) }, align 8
++@1 = private unnamed_addr global %struct.ident_t { i32 0, i32 322, i32 0, i32 0, i8* getelementptr inbounds ([23 x i8], [23 x i8]* @.str, i32 0, i32 0) }, align 8
++
++; Function Attrs: noinline nounwind optnone uwtable
++define i32 @main() #0 {
++entry:
++
++  call void (%struct.ident_t*, void (i32*, i32*, ...)*, ...) @__kmpc_fork_call(%struct.ident_t* nonnull @0, void (i32*, i32*, ...)* bitcast (void (i32*, i32*)* @.omp_outlined. to void (i32*, i32*, ...)*))
++  ret i32 0
++}
++
++; Only the last runtime call will be matched due that the rest of the "runtime function" calls
++; have some type mismatch compared to the real runtime function. See the check at bottom.
++define internal void @.omp_outlined.(i32* noalias %.global_tid., i32* noalias %.bound_tid.) #1 {
++entry:
++
++  call void @__kmpc_master(%struct.ident_t* nonnull @0)
++  call void @__kmpc_end_master(%struct.ident_t* nonnull @0, i32 0, i32 0)
++  call void @__kmpc_barrier(%struct.ident_t* nonnull @1, float 0.0)
++  call void @omp_get_thread_num()
++  ret void
++}
++
++; Fewer arguments than expected in variadic function.
++declare !callback !2 void @__kmpc_fork_call(%struct.ident_t*, void (i32*, i32*, ...)*, ...)
++
++; Fewer number of arguments in non variadic function.
++declare void @__kmpc_master(%struct.ident_t*)
++
++; Bigger number of arguments in non variadic function.
++declare void @__kmpc_end_master(%struct.ident_t*, i32, i32)
++
++; Different argument type than the expected.
++declare void @__kmpc_barrier(%struct.ident_t*, float)
++
++; Different return type.
++declare void @omp_get_thread_num()
++
++attributes #0 = { noinline nounwind optnone uwtable "correctly-rounded-divide-sqrt-fp-math"="false" "denormal-fp-math"="ieee,ieee" "denormal-fp-math-f32"="ieee,ieee" "disable-tail-calls"="false" "frame-pointer"="all" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
++attributes #1 = { noinline norecurse nounwind optnone uwtable "correctly-rounded-divide-sqrt-fp-math"="false" "denormal-fp-math"="ieee,ieee" "denormal-fp-math-f32"="ieee,ieee" "disable-tail-calls"="false" "frame-pointer"="all" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
++
++!llvm.module.flags = !{!0}
++!llvm.ident = !{!1}
++
++!0 = !{i32 1, !"wchar_size", i32 4}
++!1 = !{!"clang"}
++!2 = !{!3}
++!3 = !{i64 2, i64 -1, i64 -1, i1 true}
++; CHECK: ===-------------------------------------------------------------------------===
++; CHECK:                        ... Statistics Collected ...
++; CHECK: ===-------------------------------------------------------------------------===
++;
++; CHECK: 1 cgscc-passmgr - Maximum CGSCCPassMgr iterations on one SCC
++; CHECK-NOT: openmp-opt{{.*}}
++
++; Note that there are no stats for the openmp runtime function calls. None of the declared above was matched.

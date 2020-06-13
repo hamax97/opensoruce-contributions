@@ -1,0 +1,548 @@
+diff --git a/llvm/test/Transforms/OpenMP/mem_transfer_hiding.ll b/llvm/test/Transforms/OpenMP/mem_transfer_hiding.ll
+index 0d133339417..5e9fe2be52c 100644
+--- a/llvm/test/Transforms/OpenMP/mem_transfer_hiding.ll
++++ b/llvm/test/Transforms/OpenMP/mem_transfer_hiding.ll
+@@ -1,521 +1,538 @@
+ ; RUN: opt -S -openmpopt < %s 2>&1
+ ; REQUIRES: asserts
+ 
+ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
+ 
+ ; FIXME: This struct should be generated after splitting one of the runtime calls.
+ ; %struct.__tgt_async_info = type { i8* }
+ 
+ ; Globals for heavyComputation1.
+ @.offload_sizes = private unnamed_addr constant [1 x i64] [i64 8]
+ @.offload_maptypes = private unnamed_addr constant [1 x i64] [i64 35]
+ @.__omp_offloading_heavyComputation1.region_id = weak constant i8 0
+ @.offload_sizes.2 = private unnamed_addr constant [1 x i64] [i64 8]
+ @.offload_maptypes.2 = private unnamed_addr constant [1 x i64] [i64 800]
+ 
+ ; Globals for heavyComputation2.
+ @.offload_maptypes.3 = private unnamed_addr constant [2 x i64] [i64 35, i64 35]
+ @.offload_sizes.4 = private unnamed_addr constant [2 x i64] [i64 4, i64 0]
+ @.offload_maptypes.4 = private unnamed_addr constant [2 x i64] [i64 800, i64 544]
+ @.__omp_offloading_heavyComputation2.region_id = weak constant i8 0
+ 
+ ; Globals for heavyComputation3.
+ @.offload_maptypes.5 = private unnamed_addr constant [2 x i64] [i64 35, i64 35]
+ @.offload_sizes.6 = private unnamed_addr constant [2 x i64] [i64 4, i64 0]
+ @.offload_maptypes.6 = private unnamed_addr constant [2 x i64] [i64 800, i64 544]
+ @.__omp_offloading_heavyComputation3.region_id = weak constant i8 0
+ 
+ ; Globals for dataTransferOnly1.
+ @.offload_maptypes.7 = private unnamed_addr constant [1 x i64] [i64 33]
+ 
+ ;double heavyComputation1() {
+ ;  double random = rand();
+ ;  double a = rand() % 777;
+ ;
+-;  #pragma omp target data map(a)
++;  //#pragma omp target data map(a)
++;  void* args[1];
++;  args[0] = &a;
++;  __tgt_target_data_begin(..., args, ...)
++;
+ ;  #pragma omp target teams
+ ;  for (int i = 0; i < 1000; ++i) {
+ ;    a *= i*i / 2;
+ ;  }
+ ;
+ ;  return random + a;
+ ;}
+ define dso_local double @heavyComputation1() {
+ entry:
+   %random = alloca double, align 8
+   %a = alloca double, align 8
+   %.offload_baseptrs = alloca [1 x i8*], align 8
+   %.offload_ptrs = alloca [1 x i8*], align 8
+   %a.casted = alloca i64, align 8
+   %.offload_baseptrs2 = alloca [1 x i8*], align 8
+   %.offload_ptrs2 = alloca [1 x i8*], align 8
+ 
+   ; FIXME: Should have after splitting the runtime call __tgt_target_data_begin.
+   ; %device_id1 = alloca i64, align 8
+   ; %async_info1 = alloca %struct.__tgt_async_info, align 8
+ 
+   ; FIXME: This is the argument setup and call to the runtime call __tgt_target_data_begin_issue,
+   ;        and should be moved here.
+   ; %call1 = call i32 @rand()
+   ; %rem = srem i32 %call1, 777
+   ; %conv2 = sitofp i32 %rem to double
+   ; store double %conv2, double* %a, align 8
+   ; %0 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_baseptrs, i32 0, i32 0
+   ; %1 = bitcast i8** %0 to double**
+   ; store double* %a, double** %1, align 8
+   ; %2 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_ptrs, i32 0, i32 0
+   ; %3 = bitcast i8** %2 to double**
+   ; store double* %a, double** %3, align 8
+   ; %4 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_baseptrs, i32 0, i32 0
+   ; %5 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_ptrs, i32 0, i32 0
+   ; store i64 -1, i64* %device_id1, align 8
+   ; %handle1 = call i8* @__tgt_target_data_begin_issue(i64* dereferenceable(8) %device_id1, i32 1, i8** %4, i8** %5, i64* getelementptr inbounds ([1 x i64], [1 x i64]* @.offload_sizes, i32 0, i32 0), i64* getelementptr inbounds ([1 x i64], [1 x i64]* @.offload_maptypes, i32 0, i32 0))
+ 
+   ; FIXME: The initialization of the'random' variable should end up between the issue and wait calls.
+   ;        Note that this might be more code, but for simplicity only this variable is used here.
+   %call = call i32 @rand()
+   %conv = sitofp i32 %call to double
+   store double %conv, double* %random, align 8
+ 
+   ; FIXME: This argument setup and call to __tgt_target_data_begin should be moved above,
+   ;        changing __tgt_target_data_begin for __tgt_target_data_begin_issue.
+   %call1 = call i32 @rand()
+   %rem = srem i32 %call1, 777
+   %conv2 = sitofp i32 %rem to double
+   store double %conv2, double* %a, align 8
+   %0 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_baseptrs, i32 0, i32 0
+   %1 = bitcast i8** %0 to double**
+   store double* %a, double** %1, align 8
+   %2 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_ptrs, i32 0, i32 0
+   %3 = bitcast i8** %2 to double**
+   store double* %a, double** %3, align 8
+   %4 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_baseptrs, i32 0, i32 0
+   %5 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_ptrs, i32 0, i32 0
+   call void @__tgt_target_data_begin(i64 -1, i32 1, i8** %4, i8** %5, i64* getelementptr inbounds ([1 x i64], [1 x i64]* @.offload_sizes, i32 0, i32 0), i64* getelementptr inbounds ([1 x i64], [1 x i64]* @.offload_maptypes, i32 0, i32 0))
+ 
+   ; FIXME: The initialization of the 'random' variable should end up here.
+   ; %call = call i32 @rand()
+   ; %conv = sitofp i32 %call to double
+   ; store double %conv, double* %random, align 8
+ 
+   %6 = load double, double* %a, align 8
+   %conv3 = bitcast i64* %a.casted to double*
+   store double %6, double* %conv3, align 8
+   %7 = load i64, i64* %a.casted, align 8
+   %8 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_baseptrs2, i32 0, i32 0
+   %9 = bitcast i8** %8 to i64*
+   store i64 %7, i64* %9, align 8
+   %10 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_ptrs2, i32 0, i32 0
+   %11 = bitcast i8** %10 to i64*
+   store i64 %7, i64* %11, align 8
+   %12 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_baseptrs2, i32 0, i32 0
+   %13 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_ptrs2, i32 0, i32 0
+ 
+   ; FIXME: A fter splitting the runtime call __tgt_target_data_begin, this argument setup and call to
+   ;        __tgt_target_data_wait should be moved here, right before the kernel execution.
+   ; %device_id1_copy = load i64, i64* %device_id1, align 8 ; device_id
+   ; %queue1 = getelementptr inbounds %struct.__tgt_async_info, %struct.__tgt_async_info* %async_info1, i32 0, i32 0
+   ; store i8* %handle1, i8** %queue1, align 8
+   ; call void @__tgt_target_data_begin_wait(i64 %device_id1_copy, %struct.__tgt_async_info* dereferenceable(8) %async_info1)
+ 
+   %14 = call i32 @__tgt_target_teams(i64 -1, i8* @.__omp_offloading_heavyComputation1.region_id, i32 1, i8** %12, i8** %13, i64* getelementptr inbounds ([1 x i64], [1 x i64]* @.offload_sizes.2, i32 0, i32 0), i64* getelementptr inbounds ([1 x i64], [1 x i64]* @.offload_maptypes.2, i32 0, i32 0), i32 0, i32 0)
+   %15 = icmp ne i32 %14, 0
+   br i1 %15, label %omp_offload.failed, label %omp_offload.cont
+ 
+ omp_offload.failed:                               ; preds = %entry
+   call void @heavyComputation1FallBack(i64 %7)
+   br label %omp_offload.cont
+ 
+ omp_offload.cont:                                 ; preds = %omp_offload.failed, %entry
+   %16 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_baseptrs, i32 0, i32 0
+   %17 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_ptrs, i32 0, i32 0
+   call void @__tgt_target_data_end(i64 -1, i32 1, i8** %16, i8** %17, i64* getelementptr inbounds ([1 x i64], [1 x i64]* @.offload_sizes, i32 0, i32 0), i64* getelementptr inbounds ([1 x i64], [1 x i64]* @.offload_maptypes, i32 0, i32 0))
+   %18 = load double, double* %random, align 8
+   %19 = load double, double* %a, align 8
+   %add = fadd double %18, %19
+   ret double %add
+ }
+ 
+ define internal void @heavyComputation1FallBack(i64 %a) {
+ entry:
+   ; Fallback for offloading function heavyComputation1.
+   ret void
+ }
+ 
+ ;int heavyComputation2(double* a, unsigned size) {
+ ;  int random = rand() % 7;
+ ;
+-;  #pragma omp target data map(a[0:size], size)
++;  //#pragma omp target data map(a[0:size], size)
++;  void* args[2];
++;  args[0] = &a;
++;  args[1] = &size;
++;  __tgt_target_data_begin(..., args, ...)
++;
+ ;  #pragma omp target teams
+ ;  for (int i = 0; i < size; ++i) {
+ ;    a[i] = ++a[i] * 3.141624;
+ ;  }
+ ;
+ ;  return random;
+ ;}
+ define dso_local i32 @heavyComputation2(double* %a, i32 %size) {
+ entry:
+   %a.addr = alloca double*, align 8
+   %size.addr = alloca i32, align 4
+   %random = alloca i32, align 4
+   %.offload_baseptrs = alloca [2 x i8*], align 8
+   %.offload_ptrs = alloca [2 x i8*], align 8
+   %.offload_sizes = alloca [2 x i64], align 8
+   %size.casted = alloca i64, align 8
+   %.offload_baseptrs2 = alloca [2 x i8*], align 8
+   %.offload_ptrs3 = alloca [2 x i8*], align 8
+ 
+   ; FIXME: Should have after splitting the runtime call __tgt_target_data_begin.
+   ; %device_id1 = alloca i64, align 8
+   ; %async_info1 = alloca %struct.__tgt_async_info, align 8
+ 
+   store double* %a, double** %a.addr, align 8
+   store i32 %size, i32* %size.addr, align 4
+ 
+   %call = call i32 @rand()
+   %rem = srem i32 %call, 7
+   store i32 %rem, i32* %random, align 4
+ 
+   %0 = load double*, double** %a.addr, align 8
+   %1 = load double*, double** %a.addr, align 8
+   %arrayidx = getelementptr inbounds double, double* %1, i64 0
+   %2 = load i32, i32* %size.addr, align 4
+   %conv = zext i32 %2 to i64
+   %3 = mul nuw i64 %conv, 8
+   %4 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_baseptrs, i32 0, i32 0
+   %5 = bitcast i8** %4 to double**
+   store double* %0, double** %5, align 8
+   %6 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_ptrs, i32 0, i32 0
+   %7 = bitcast i8** %6 to double**
+   store double* %arrayidx, double** %7, align 8
+   %8 = getelementptr inbounds [2 x i64], [2 x i64]* %.offload_sizes, i32 0, i32 0
+   store i64 %3, i64* %8, align 8
+   %9 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_baseptrs, i32 0, i32 1
+   %10 = bitcast i8** %9 to i32**
+   store i32* %size.addr, i32** %10, align 8
+   %11 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_ptrs, i32 0, i32 1
+   %12 = bitcast i8** %11 to i32**
+   store i32* %size.addr, i32** %12, align 8
+   %13 = getelementptr inbounds [2 x i64], [2 x i64]* %.offload_sizes, i32 0, i32 1
+   store i64 4, i64* %13, align 8
+   %14 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_baseptrs, i32 0, i32 0
+   %15 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_ptrs, i32 0, i32 0
+   %16 = getelementptr inbounds [2 x i64], [2 x i64]* %.offload_sizes, i32 0, i32 0
+   call void @__tgt_target_data_begin(i64 -1, i32 2, i8** %14, i8** %15, i64* %16, i64* getelementptr inbounds ([2 x i64], [2 x i64]* @.offload_maptypes.3, i32 0, i32 0))
+   ; FIXME: After splitting __tgt_target_data_begin, the issue cannot be moved above the
+   ;        initialization of the variable 'random', because it's not guaranteed that the
+   ;        rand() function will not modify '*a'.
+   ; store i64 -1, i64* %device_id1, align 8
+   ; %handle1 = call i8* @__tgt_target_data_begin_issue(i64* dereferenceable(8) %device_id1, i32 2, i8** %14, i8** %15, i64* %16, i64* getelementptr inbounds ([2 x i64], [2 x i64]* @.offload_maptypes.3, i32 0, i32 0))
+ 
+   %17 = load i32, i32* %size.addr, align 4
+   %conv1 = bitcast i64* %size.casted to i32*
+   store i32 %17, i32* %conv1, align 4
+   %18 = load i64, i64* %size.casted, align 8
+   %19 = load double*, double** %a.addr, align 8
+   %20 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_baseptrs2, i32 0, i32 0
+   %21 = bitcast i8** %20 to i64*
+   store i64 %18, i64* %21, align 8
+   %22 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_ptrs3, i32 0, i32 0
+   %23 = bitcast i8** %22 to i64*
+   store i64 %18, i64* %23, align 8
+   %24 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_baseptrs2, i32 0, i32 1
+   %25 = bitcast i8** %24 to double**
+   store double* %19, double** %25, align 8
+   %26 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_ptrs3, i32 0, i32 1
+   %27 = bitcast i8** %26 to double**
+   store double* %19, double** %27, align 8
+   %28 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_baseptrs2, i32 0, i32 0
+   %29 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_ptrs3, i32 0, i32 0
+ 
+   ; FIXME: After splitting the runtime call __tgt_target_data_begin, this argument setup and call to
+   ;        __tgt_target_data_wait should be moved here, right before the kernel execution.
+   ; %device_id1_copy = load i64, i64* %device_id1, align 8 ; device_id
+   ; %queue1 = getelementptr inbounds %struct.__tgt_async_info, %struct.__tgt_async_info* %async_info1, i32 0, i32 0
+   ; store i8* %handle1, i8** %queue1, align 8
+   ; call void @__tgt_target_data_begin_wait(i64 %device_id1_copy, %struct.__tgt_async_info* dereferenceable(8) %async_info1)
+ 
+   %30 = call i32 @__tgt_target_teams(i64 -1, i8* @.__omp_offloading_heavyComputation2.region_id, i32 2, i8** %28, i8** %29, i64* getelementptr inbounds ([2 x i64], [2 x i64]* @.offload_sizes.4, i32 0, i32 0), i64* getelementptr inbounds ([2 x i64], [2 x i64]* @.offload_maptypes.4, i32 0, i32 0), i32 0, i32 0)
+   %31 = icmp ne i32 %30, 0
+   br i1 %31, label %omp_offload.failed, label %omp_offload.cont
+ 
+ omp_offload.failed:                               ; preds = %entry
+   call void @heavyComputation2FallBack(i64 %18, double* %19)
+   br label %omp_offload.cont
+ 
+ omp_offload.cont:                                 ; preds = %omp_offload.failed, %entry
+   %32 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_baseptrs, i32 0, i32 0
+   %33 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_ptrs, i32 0, i32 0
+   %34 = getelementptr inbounds [2 x i64], [2 x i64]* %.offload_sizes, i32 0, i32 0
+   call void @__tgt_target_data_end(i64 -1, i32 2, i8** %32, i8** %33, i64* %34, i64* getelementptr inbounds ([2 x i64], [2 x i64]* @.offload_maptypes.3, i32 0, i32 0))
+   %35 = load i32, i32* %random, align 4
+   ret i32 %35
+ }
+ 
+ define internal void @heavyComputation2FallBack(i64 %size, double* %a) {
+ entry:
+   ; Fallback for offloading function heavyComputation2.
+   ret void
+ }
+ 
+ ;int heavyComputation3(double* restrict a, unsigned size) {
+ ;  int random = rand() % 7;
+ ;
+-;  #pragma omp target data map(a[0:size], size)
++;  //#pragma omp target data map(a[0:size], size)
++;  void* args[2];
++;  args[0] = &a;
++;  args[1] = &size;
++;  __tgt_target_data_begin(..., args, ...)
++;
+ ;  #pragma omp target teams
+ ;  for (int i = 0; i < size; ++i) {
+ ;    a[i] = ++a[i] * 3.141624;
+ ;  }
+ ;
+ ;  return random;
+ ;}
+ define dso_local i32 @heavyComputation3(double* noalias %a, i32 %size) {
+ entry:
+   %a.addr = alloca double*, align 8
+   %size.addr = alloca i32, align 4
+   %random = alloca i32, align 4
+   %.offload_baseptrs = alloca [2 x i8*], align 8
+   %.offload_ptrs = alloca [2 x i8*], align 8
+   %.offload_sizes = alloca [2 x i64], align 8
+   %size.casted = alloca i64, align 8
+   %.offload_baseptrs2 = alloca [2 x i8*], align 8
+   %.offload_ptrs3 = alloca [2 x i8*], align 8
+ 
+   ; FIXME: Should have after splitting the runtime call __tgt_target_data_begin.
+   ; %device_id1 = alloca i64, align 8
+   ; %async_info1 = alloca %struct.__tgt_async_info, align 8
+ 
+   store double* %a, double** %a.addr, align 8
+   store i32 %size, i32* %size.addr, align 4
+ 
+   ; FIXME: This is the argument setup and call to the runtime call __tgt_target_data_begin_issue,
+   ;        and should be moved here.
+   ; store double* %a, double** %a.addr, align 8
+   ; store i32 %size, i32* %size.addr, align 4
+   ; %0 = load double*, double** %a.addr, align 8
+   ; %1 = load double*, double** %a.addr, align 8
+   ; %arrayidx = getelementptr inbounds double, double* %1, i64 0
+   ; %2 = load i32, i32* %size.addr, align 4
+   ; %conv = zext i32 %2 to i64
+   ; %3 = mul nuw i64 %conv, 8
+   ; %4 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_baseptrs, i32 0, i32 0
+   ; %5 = bitcast i8** %4 to double**
+   ; store double* %0, double** %5, align 8
+   ; %6 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_ptrs, i32 0, i32 0
+   ; %7 = bitcast i8** %6 to double**
+   ; store double* %arrayidx, double** %7, align 8
+   ; %8 = getelementptr inbounds [2 x i64], [2 x i64]* %.offload_sizes, i32 0, i32 0
+   ; store i64 %3, i64* %8, align 8
+   ; %9 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_baseptrs, i32 0, i32 1
+   ; %10 = bitcast i8** %9 to i32**
+   ; store i32* %size.addr, i32** %10, align 8
+   ; %11 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_ptrs, i32 0, i32 1
+   ; %12 = bitcast i8** %11 to i32**
+   ; store i32* %size.addr, i32** %12, align 8
+   ; %13 = getelementptr inbounds [2 x i64], [2 x i64]* %.offload_sizes, i32 0, i32 1
+   ; store i64 4, i64* %13, align 8
+   ; %14 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_baseptrs, i32 0, i32 0
+   ; %15 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_ptrs, i32 0, i32 0
+   ; %16 = getelementptr inbounds [2 x i64], [2 x i64]* %.offload_sizes, i32 0, i32 0
+   ; store i64 -1, i64* %device_id1, align 8
+   ; %handle1 = call i8* @__tgt_target_data_begin_issue(i64* dereferenceable(8) %device_id1, i32 2, i8** %14, i8** %15, i64* %16, i64* getelementptr inbounds ([2 x i64], [2 x i64]* @.offload_maptypes.5, i32 0, i32 0))
+ 
+   ; FIXME: The initialization of the'random' variable should end up between the issue and wait calls.
+   ;        Note that this might be more code, but for simplicity only this variable is used here.
+   %call = call i32 @rand()
+   %rem = srem i32 %call, 7
+   store i32 %rem, i32* %random, align 4
+ 
+   ; FIXME: This argument setup and call to __tgt_target_data_begin should be moved above,
+   ;        changing __tgt_target_data_begin for to __tgt_target_data_begin_issue.
+   %0 = load double*, double** %a.addr, align 8
+   %1 = load double*, double** %a.addr, align 8
+   %arrayidx = getelementptr inbounds double, double* %1, i64 0
+   %2 = load i32, i32* %size.addr, align 4
+   %conv = zext i32 %2 to i64
+   %3 = mul nuw i64 %conv, 8
+   %4 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_baseptrs, i32 0, i32 0
+   %5 = bitcast i8** %4 to double**
+   store double* %0, double** %5, align 8
+   %6 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_ptrs, i32 0, i32 0
+   %7 = bitcast i8** %6 to double**
+   store double* %arrayidx, double** %7, align 8
+   %8 = getelementptr inbounds [2 x i64], [2 x i64]* %.offload_sizes, i32 0, i32 0
+   store i64 %3, i64* %8, align 8
+   %9 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_baseptrs, i32 0, i32 1
+   %10 = bitcast i8** %9 to i32**
+   store i32* %size.addr, i32** %10, align 8
+   %11 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_ptrs, i32 0, i32 1
+   %12 = bitcast i8** %11 to i32**
+   store i32* %size.addr, i32** %12, align 8
+   %13 = getelementptr inbounds [2 x i64], [2 x i64]* %.offload_sizes, i32 0, i32 1
+   store i64 4, i64* %13, align 8
+   %14 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_baseptrs, i32 0, i32 0
+   %15 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_ptrs, i32 0, i32 0
+   %16 = getelementptr inbounds [2 x i64], [2 x i64]* %.offload_sizes, i32 0, i32 0
+   call void @__tgt_target_data_begin(i64 -1, i32 2, i8** %14, i8** %15, i64* %16, i64* getelementptr inbounds ([2 x i64], [2 x i64]* @.offload_maptypes.5, i32 0, i32 0))
+ 
+   ; FIXME: The initialization of the 'random' variable should end up here.
+   ; %call = call i32 @rand()
+   ; %rem = srem i32 %call, 7
+   ; store i32 %rem, i32* %random, align 4
+ 
+   %17 = load i32, i32* %size.addr, align 4
+   %conv1 = bitcast i64* %size.casted to i32*
+   store i32 %17, i32* %conv1, align 4
+   %18 = load i64, i64* %size.casted, align 8
+   %19 = load double*, double** %a.addr, align 8
+   %20 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_baseptrs2, i32 0, i32 0
+   %21 = bitcast i8** %20 to i64*
+   store i64 %18, i64* %21, align 8
+   %22 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_ptrs3, i32 0, i32 0
+   %23 = bitcast i8** %22 to i64*
+   store i64 %18, i64* %23, align 8
+   %24 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_baseptrs2, i32 0, i32 1
+   %25 = bitcast i8** %24 to double**
+   store double* %19, double** %25, align 8
+   %26 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_ptrs3, i32 0, i32 1
+   %27 = bitcast i8** %26 to double**
+   store double* %19, double** %27, align 8
+   %28 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_baseptrs2, i32 0, i32 0
+   %29 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_ptrs3, i32 0, i32 0
+ 
+   ; FIXME: After splitting the runtime call __tgt_target_data_begin, this argument setup and call to
+   ;        __tgt_target_data_wait should be moved here, right before the kernel execution.
+   ; %device_id1_copy = load i64, i64* %device_id1, align 8 ; device_id
+   ; %queue1 = getelementptr inbounds %struct.__tgt_async_info, %struct.__tgt_async_info* %async_info1, i32 0, i32 0
+   ; store i8* %handle1, i8** %queue1, align 8
+   ; call void @__tgt_target_data_begin_wait(i64 %device_id1_copy, %struct.__tgt_async_info* dereferenceable(8) %async_info1)
+ 
+   %30 = call i32 @__tgt_target_teams(i64 -1, i8* @.__omp_offloading_heavyComputation3.region_id, i32 2, i8** %28, i8** %29, i64* getelementptr inbounds ([2 x i64], [2 x i64]* @.offload_sizes.6, i32 0, i32 0), i64* getelementptr inbounds ([2 x i64], [2 x i64]* @.offload_maptypes.6, i32 0, i32 0), i32 0, i32 0)
+   %31 = icmp ne i32 %30, 0
+   br i1 %31, label %omp_offload.failed, label %omp_offload.cont
+ 
+ omp_offload.failed:                               ; preds = %entry
+   call void @heavyComputation3FallBack(i64 %18, double* %19)
+   br label %omp_offload.cont
+ 
+ omp_offload.cont:                                 ; preds = %omp_offload.failed, %entry
+   %32 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_baseptrs, i32 0, i32 0
+   %33 = getelementptr inbounds [2 x i8*], [2 x i8*]* %.offload_ptrs, i32 0, i32 0
+   %34 = getelementptr inbounds [2 x i64], [2 x i64]* %.offload_sizes, i32 0, i32 0
+   call void @__tgt_target_data_end(i64 -1, i32 2, i8** %32, i8** %33, i64* %34, i64* getelementptr inbounds ([2 x i64], [2 x i64]* @.offload_maptypes.5, i32 0, i32 0))
+   %35 = load i32, i32* %random, align 4
+   ret i32 %35
+ }
+ 
+ define internal void @heavyComputation3FallBack(i64 %size, double* %a) {
+ entry:
+   ; Fallback for offloading function heavyComputation3.
+   ret void
+ }
+ 
+ ;int dataTransferOnly1(double* restrict a, unsigned size) {
+ ;  // Random computation.
+ ;  int random = rand();
+ ;
+-;  #pragma omp target data map(to:a[0:size])
++;  //#pragma omp target data map(to:a[0:size])
++;  void* args[1];
++;  args[0] = &a;
++;  __tgt_target_data_begin(..., args, ...)
+ ;
+ ;  // Random computation.
+ ;  random %= size;
+ ;  return random;
+ ;}
+ define dso_local i32 @dataTransferOnly1(double* noalias %a, i32 %size) {
+ entry:
+   %a.addr = alloca double*, align 8
+   %size.addr = alloca i32, align 4
+   %random = alloca i32, align 4
+   %.offload_baseptrs = alloca [1 x i8*], align 8
+   %.offload_ptrs = alloca [1 x i8*], align 8
+   %.offload_sizes = alloca [1 x i64], align 8
+ 
+   ; FIXME: Should have after splitting the runtime call __tgt_target_data_begin.
+   ; %device_id1 = alloca i64, align 8
+   ; %async_info1 = alloca %struct.__tgt_async_info, align 8
+ 
+   store double* %a, double** %a.addr, align 8
+   store i32 %size, i32* %size.addr, align 4
+ 
+   ; FIXME: This is the argument setup and call to the runtime call __tgt_target_data_begin_issue,
+   ;        and should be moved here.
+   ; %0 = load double*, double** %a.addr, align 8
+   ; %1 = load double*, double** %a.addr, align 8
+   ; %arrayidx = getelementptr inbounds double, double* %1, i64 0
+   ; %2 = load i32, i32* %size.addr, align 4
+   ; %conv = zext i32 %2 to i64
+   ; %3 = mul nuw i64 %conv, 8
+   ; %4 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_baseptrs, i32 0, i32 0
+   ; %5 = bitcast i8** %4 to double**
+   ; store double* %0, double** %5, align 8
+   ; %6 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_ptrs, i32 0, i32 0
+   ; %7 = bitcast i8** %6 to double**
+   ; store double* %arrayidx, double** %7, align 8
+   ; %8 = getelementptr inbounds [1 x i64], [1 x i64]* %.offload_sizes, i32 0, i32 0
+   ; store i64 %3, i64* %8, align 8
+   ; %9 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_baseptrs, i32 0, i32 0
+   ; %10 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_ptrs, i32 0, i32 0
+   ; %11 = getelementptr inbounds [1 x i64], [1 x i64]* %.offload_sizes, i32 0, i32 0
+   ; store i64 -1, i64* %device_id1, align 8
+   ; %handle1 = call i8* @__tgt_target_data_begin_issue(i64* dereferenceable(8) %device_id1, i32 1, i8** %9, i8** %10, i64* %11, i64* getelementptr inbounds ([1 x i64], [1 x i64]* @.offload_maptypes.7, i32 0, i32 0))
+ 
+   %call = call i32 @rand()
+   store i32 %call, i32* %random, align 4
+ 
+   ; FIXME: This argument setup and call to __tgt_target_data_begin should be moved above,
+   ;        changing __tgt_target_data_begin for to __tgt_target_data_begin_issue.
+   %0 = load double*, double** %a.addr, align 8
+   %1 = load double*, double** %a.addr, align 8
+   %arrayidx = getelementptr inbounds double, double* %1, i64 0
+   %2 = load i32, i32* %size.addr, align 4
+   %conv = zext i32 %2 to i64
+   %3 = mul nuw i64 %conv, 8
+   %4 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_baseptrs, i32 0, i32 0
+   %5 = bitcast i8** %4 to double**
+   store double* %0, double** %5, align 8
+   %6 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_ptrs, i32 0, i32 0
+   %7 = bitcast i8** %6 to double**
+   store double* %arrayidx, double** %7, align 8
+   %8 = getelementptr inbounds [1 x i64], [1 x i64]* %.offload_sizes, i32 0, i32 0
+   store i64 %3, i64* %8, align 8
+   %9 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_baseptrs, i32 0, i32 0
+   %10 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_ptrs, i32 0, i32 0
+   %11 = getelementptr inbounds [1 x i64], [1 x i64]* %.offload_sizes, i32 0, i32 0
+   call void @__tgt_target_data_begin(i64 -1, i32 1, i8** %9, i8** %10, i64* %11, i64* getelementptr inbounds ([1 x i64], [1 x i64]* @.offload_maptypes.7, i32 0, i32 0))
+ 
+   ; FIXME: The initialization of the 'random' variable should end up here.
+   ; %call = call i32 @rand()
+   ; store i32 %call, i32* %random, align 4
+ 
+   %12 = load i32, i32* %size.addr, align 4
+   %13 = load i32, i32* %random, align 4
+   %rem = urem i32 %13, %12
+   store i32 %rem, i32* %random, align 4
+ 
+   ; FIXME: After splitting the runtime call __tgt_target_data_begin, this argument setup and call to
+   ;        __tgt_target_data_wait should be moved here, right before the kernel execution.
+   ; %device_id1_copy = load i64, i64* %device_id1, align 8 ; device_id
+   ; %queue1 = getelementptr inbounds %struct.__tgt_async_info, %struct.__tgt_async_info* %async_info1, i32 0, i32 0
+   ; store i8* %handle1, i8** %queue1, align 8
+   ; call void @__tgt_target_data_begin_wait(i64 %device_id1_copy, %struct.__tgt_async_info* dereferenceable(8) %async_info1)
+ 
+   %14 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_baseptrs, i32 0, i32 0
+   %15 = getelementptr inbounds [1 x i8*], [1 x i8*]* %.offload_ptrs, i32 0, i32 0
+   %16 = getelementptr inbounds [1 x i64], [1 x i64]* %.offload_sizes, i32 0, i32 0
+   call void @__tgt_target_data_end(i64 -1, i32 1, i8** %14, i8** %15, i64* %16, i64* getelementptr inbounds ([1 x i64], [1 x i64]* @.offload_maptypes.7, i32 0, i32 0))
+ 
+   %17 = load i32, i32* %random, align 4
+   ret i32 %17
+ }
+ 
+ declare dso_local void @__tgt_target_data_begin(i64, i32, i8**, i8**, i64*, i64*)
+ 
+ declare dso_local i32 @__tgt_target_teams(i64, i8*, i32, i8**, i8**, i64*, i64*, i32, i32)
+ 
+ declare dso_local void @__tgt_target_data_end(i64, i32, i8**, i8**, i64*, i64*)
+ 
+ declare dso_local i32 @rand()
+ 
+ ; FIXME: These two function declarations must be generated after splitting the runtime function
+ ;        __tgt_target_data_begin.
+ ; declare dso_local i8* @__tgt_target_data_begin_issue(i64* dereferenceable(8), i32, i8**, i8**, i64*, i64*)
+ ; declare dso_local void @__tgt_target_data_begin_wait(i64, %struct.__tgt_async_info* dereferenceable(8))
+\ No newline at end of file

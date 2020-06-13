@@ -1,0 +1,58 @@
+commit f432f8691f6d7334afb026d0892e0b076cda32f0
+Author: Hamilton Tobon <hamiltontobon77@gmail.com>
+Date:   Thu Mar 12 07:11:07 2020 -0400
+
+    Validate declaration types againts the expected types
+
+diff --git a/llvm/lib/Transforms/IPO/OpenMPOpt.cpp b/llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+index c81ab168735..a76c14c48a9 100644
+--- a/llvm/lib/Transforms/IPO/OpenMPOpt.cpp
++++ b/llvm/lib/Transforms/IPO/OpenMPOpt.cpp
+@@ -388,6 +388,30 @@ private:
+   /// Helper to initialize all runtime function information for those defined in
+   /// OpenMPKinds.def.
+   void initializeRuntimeFunctions() {
++    // Helper to check the types in the declaration against the expected types.
++    auto CheckTypes = [&](RuntimeFunctionInfo &RFI) {
++      if (!RFI.Declaration)
++        return true;
++
++      Function *F = RFI.Declaration;
++      if (F->getReturnType()->getTypeID() != RFI.ReturnType->getTypeID())
++        return false;
++
++      if (F->arg_size() != RFI.getNumArgs())
++        return false;
++      
++      SmallVector<Type *, 8>::iterator RTFTyIt;
++      RTFTyIt = RFI.ArgumentTypes.begin();
++      for (Argument &Arg : F->args()) {
++        if (Arg.getType()->getTypeID() != (*RTFTyIt)->getTypeID())
++          return false;
++
++        ++RTFTyIt;
++      }
++
++      return true;
++    }; 
++
+     // Helper to collect all uses of the decleration in the UsesMap.
+     auto CollectUses = [&](RuntimeFunctionInfo &RFI) {
+       unsigned NumUses = 0;
+@@ -422,6 +446,8 @@ private:
+     RFI.ReturnType = _ReturnType;                                              \
+     RFI.ArgumentTypes = SmallVector<Type *, 8>({__VA_ARGS__});                 \
+     RFI.Declaration = M.getFunction(_Name);                                    \
++    bool TypesMatch = CheckTypes(RFI);                                         \
++    (void)TypesMatch;                                                          \
+     unsigned NumUses = CollectUses(RFI);                                       \
+     (void)NumUses;                                                             \
+     LLVM_DEBUG({                                                               \
+@@ -434,7 +460,6 @@ private:
+   }
+ #include "llvm/Frontend/OpenMP/OMPKinds.def"
+ 
+-    // TODO: We should validate the declaration agains the types we expect.
+     // TODO: We should attach the attributes defined in OMPKinds.def.
+   }
+ 
