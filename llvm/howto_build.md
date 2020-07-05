@@ -14,7 +14,8 @@
 
        sudo apt install cmake ccache python3-dev valgrind libelf-dev libffi-dev liblzma-dev swig lua5.3 texi2html
 
-5. `Binutils`.
+5. `Binutils`. This is needed for the `Interprocedural Optimizations` module `IPO`, specially the `gold` linker.
+If you are not developing, this might not be needed.
 
        git clone --depth 1 git://sourceware.org/git/binutils-gdb.git binutils
  
@@ -26,10 +27,9 @@
        ../configure --enable-gold --enable-plugins --disable-werror
        make -j3 all-gold
        
-    Place the `ld-new` binary in `/usr/bin/ld.gold`. This is necessary for for
-    IPO (OpenMP optimizations are included in IPO) support. Read: https://llvm.org/docs/GoldPlugin.html.
+    Place the `ld-new` binary in `/usr/bin/ld.gold`. Read: https://llvm.org/docs/GoldPlugin.html.
 
-6. To enable OpenMP with offloading support you MUST compile with `clang` and `clang++`.
+6. To enable OpenMP with device offloading support you MUST compile with `clang` and `clang++`.
 So first compile Clang.
 
 # Configuration and Installation of Clang and LLVM
@@ -50,7 +50,6 @@ So first compile Clang.
 
    ---
     
-
 2. Create the build directory and set the following variables:
 
        mkdir build && cd build
@@ -65,10 +64,12 @@ So first compile Clang.
        
 3. For `Debug` builds also set these variables:
    
-       BUILD_TYPE=Debug
+       # If working on OpenMP interprocedural optimizations:
+       #  - The c and c++ compilers must be clang and clang++
        CC=<path/to/c/compiler>
        CXX=<path/to/c++/compiler>
        
+       BUILD_TYPE=Debug
        CCACHE_MAXSIZE=100G
        CCACHE_DIR=<installation/path>/ccache     # It can be any path.
        
@@ -129,7 +130,10 @@ So first compile Clang.
       - https://arnon.dk/matching-sm-architectures-arch-and-gencode-for-various-nvidia-cards/
       - https://freecompilercamp.org/llvm-openmp-build/
 
-2. Go to the `build` directory used in the previous steps.
+2. Go to the `build` directory used in the previous steps and run:
+
+       mkdir projects/openmp && cd projects/openmp
+       
 3. Define the following variables:
    
        OMP_PROJECT_DIR=<llvm-repo-root>/openmp
@@ -137,9 +141,9 @@ So first compile Clang.
        CXX=<path/to/binary/clang++>            # Preferably a Clang++ release, it will be faster.
        GPU_ARCH=sm_61                          # Pascal architecture.
        GPU_COMPUTE_CAPABILITIES=61             # Compute capability of GTX 1050.
-       USE_DEBUGGER=ON                         # If on Debug mode.
+       USE_DEBUGGER=OFF                        # Set to ON if Debug mode.
        
-       # For some reason, when installing, this binary is not installed. So this is needed.
+       # For some reason, when installing, this binary (llvm-lit) is not installed. So, this is needed.
        export PATH=<where-you-built-llvm-and-clang>/bin:$PATH
        
 4. Configure:
@@ -164,18 +168,35 @@ So first compile Clang.
 
        cmake --install .
        
-7. When compiling a program with offloading support you need to add the OpenMP library `libomptarget`
-and the include directory where `omp.h` ended up.
+7. When compiling a program with offloading support you need to add the OpenMP
+`libomptarget` library folder and the include directory where `omp.h` ended up.
 
    If in `Debug` mode:
 
-       build/libomptarget/    # The libraries libomptarget.*
-       build/runtime/src/     # The header files omp.h
+       build/projects/openmp/libomptarget/    # The libraries libomptarget.*
+       build/projects/openmp/runtime/src/     # The header files omp.h
 
    If in `Release` mode:
    
         $INSTALL_DIR/lib       # The libraries libomptarget.*
         $INSTALL_DIR/include   # The header files omp.h
+        
+   Also, set the variable `LIBRARY_PATH` to `$INSTALL_DIR/lib` or
+   `build/projects/openmp/libomptarget`. Then compile:
+   
+       # A normal program.
+       clang -I <path-to-dir-with-omp.h> -O3 \
+       -fopenmp -fopenmp-targets=nvptx64-nvidia-cuda \
+       -Xopenmp-target -march=sm_61 \        # These might not be needed, or might be different.
+       <program>.c -o <exe-with-offload-support>
+       
+   If you want to see the temporary files (LLVM IR, preprocessing stage, assembly, ...).
+   Perhaps what you want to see is the generated `<program>-host-x86_64-unknown-linux-gnu.ll`.
+   
+       clang -I <path-to-dir-with-omp.h> -save-temps -g0 -O3 -S -emit-llvm \
+       -fopenmp -fopenmp-targets=nvptx64-nvidia-cuda \
+       -Xopenmp-target -march=sm_61 \        # These might not be needed, or might be different.
+       <program>.c -o <llvm-ir-that-uses-cuda-runtime>
         
 ### Troubleshoot
 * If when building there is an error about the GCC version, make a symbolic link in
