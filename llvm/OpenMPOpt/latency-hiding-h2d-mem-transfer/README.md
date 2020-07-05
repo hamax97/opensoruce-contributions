@@ -1,16 +1,20 @@
 # Helpful commands
-## Compile in device offloading mode
 
-`export LIBRARY_PATH=/home/htobonm/Workspace/compilers/llvm/builds/debug/libomptarget:$LIBRARY_PATH clang -I/home/htobonm/Workspace/compilers/llvm/builds/debug/projects/openmp/runtime/src -fopenmp -fopenmp-targets=nvptx64-nvidia-cuda -Xopenmp-target -march=sm_61 using_gpu_test.c -o using_gpu_test`
+* See this [HOWTO](../howto_build.md) for compiling a program with offloading support.
+* Recompile IPO module:
 
-## Recompile optimizer
-In the build directory run:
+      ninja -j3 -l3 libLLVMipo.so
 
-`ninja -j3 -l3 libLLVMipo.so`
+* Test optimizer
 
-## Test optimizer
+      OPT=/home/htobonm/Workspace/compilers/llvm/builds/debug/bin/opt
+      $OPT -S -passes=openmpopt < mem_transfer_hiding.ll > /dev/null
+      
+* Add FileCheck lines to regression test
 
-`OPT=/home/htobonm/Workspace/compilers/llvm/builds/debug/bin/opt`
-
-`$OPT -S -openmpopt < mem_transfer_hiding.ll > /dev/null`
+      <repo-root>/llvm/utils/update_test_checks.py --opt=builds/debug/bin/opt \
+      -p --function-signature \
+      <repo-root>/llvm/test/Transforms/OpenMP/<file>.ll
+      
+* Consider passing your tests through `-O3` and the `mem2reg` pass.
 
