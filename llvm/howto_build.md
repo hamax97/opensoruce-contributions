@@ -74,8 +74,9 @@ So first compile Clang.
        CCACHE_DIR=<installation/path>/ccache     # It can be any path.
        
        # Use this variable in the configure.
-       SPECIFIC_BUILD_FLAGS="-DCMAKE_C_COMPILER=$CC -DCMAKE_CXX_COMPILER=$CXX 
-         -DLLVM_CCACHE_BUILD=ON -DLLVM_CCACHE_MAX_SIZE=$CCACHE_MAXSIZE
+       SPECIFIC_BUILD_FLAGS="-DCMAKE_BUILD_TYPE=$BUILD_TYPE
+         -DCMAKE_C_COMPILER=$CC -DCMAKE_CXX_COMPILER=$CXX 
+         -DLLVM_CCACHE_BUILD=ON -DLLVM_CCACHE_MAXSIZE=$CCACHE_MAXSIZE
          -DLLVM_CCACHE_DIR=$CCACHE_DIR"
          
    For `Release` builds set these variables:
